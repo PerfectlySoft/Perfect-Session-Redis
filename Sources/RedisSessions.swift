@@ -11,6 +11,7 @@ import PerfectRedis
 import PerfectSession
 import PerfectHTTP
 import Foundation
+import PerfectThread
 
 public struct RedisSessionConnector {
 
@@ -41,26 +42,12 @@ public struct RedisSessions {
 					defer {
 						RedisClient.releaseClient(client)
 					}
-//					guard case .simpleString(let _) = response else {
-//						return
-//					}
 				}
 			} catch {
 				print(error)
 			}
 		}
 
-//		var s = session
-//		s.updated = Int(Date().timeIntervalSince1970)
-//		// perform UPDATE
-//		let stmt = "UPDATE \(PostgresSessionConnector.table) SET userid = $1, updated = $2, idle = $3, data = $4 WHERE token = $5"
-//		exec(stmt, params: [
-//			s.userid,
-//			s.updated,
-//			s.idle,
-//			s.tojson(),
-//			s.token
-//			])
 	}
 
 	public func start(_ request: HTTPRequest) -> PerfectSession {
@@ -75,22 +62,29 @@ public struct RedisSessions {
 		session.data["useragent"]	= request.header(.userAgent) ?? "unknown"
 		session.setCSRF()
 
-		RedisClient.getClient(withIdentifier: RedisSessionConnector.connect()) {
-			c in
-			do {
-				let client = try c()
-				client.set(key: session.token, value: .string(session.tojson())) {
-					response in
-					defer {
-						RedisClient.releaseClient(client)
+		do {
+			var encoded = try session.data.jsonEncodedString()
+			encoded = encoded.replacingOccurrences(of: "\"", with: "\\\"")
+			RedisClient.getClient(withIdentifier: RedisSessionConnector.connect()) {
+				c in
+				do {
+					let client = try c()
+					client.set(key: session.token, value: .string(encoded)) {
+						response in
+						defer {
+							RedisClient.releaseClient(client)
+						}
+						guard response.isSimpleOK else {
+							print("Unexpected response \(response)")
+							return
+						}
 					}
-					guard case .simpleString( _) = response else {
-						return
-					}
+				} catch {
+					print(error)
 				}
-			} catch {
-				print(error)
 			}
+		} catch {
+			print(error)
 		}
 		return session
 	}
@@ -134,79 +128,59 @@ public struct RedisSessions {
 	}
 
 	public func resume(token: String) -> PerfectSession {
-		var session = PerfectSession()
-		RedisClient.getClient(withIdentifier: RedisSessionConnector.connect()) {
-			c in
-			do {
-				let client = try c()
-				client.get(key: token) {
-					response in
-					defer {
-						RedisClient.releaseClient(client)
+		let p = Promise<PerfectSession> {
+			p in
+			RedisClient.getClient(withIdentifier: RedisSessionConnector.connect()) {
+				c in
+				do {
+					let client = try c()
+					client.get(key: token) {
+						response in
+						defer {
+							RedisClient.releaseClient(client)
+						}
+
+						var session = PerfectSession()
+						guard case .bulkString = response else {
+							print("Unexpected response \(response)")
+							p.set(session)
+							return
+						}
+
+						guard let data = response.toString(), !data.isEmpty else {
+							print("NO DATA")
+							p.set(session)
+							return
+						}
+						do {
+							let opts = try data.jsonDecode() as! [String: Any]
+							session.token = token
+							session.userid = opts["userid"] as? String ?? ""
+							session.created = opts["created"] as? Int ?? 0
+							session.updated = opts["updated"] as? Int ?? 0
+							session.idle = opts["idle"] as? Int ?? 0
+							session.ipaddress = opts["ipaddress"] as? String ?? ""
+							session.useragent = opts["useragent"] as? String ?? ""
+							session.data = opts
+
+							session._state = "resume"
+							p.set(session)
+						} catch {
+							print("Unexpected json response \(error)")
+							p.fail(error)
+						}
 					}
-					guard case .bulkString = response else {
-						print("Unexpected response \(response)")
-						return
-					}
-					let data = response.toString()
-					do {
-						let opts = try data?.jsonDecode() as! [String: Any]
-						session.token = token
-						session.userid = opts["userid"] as? String ?? ""
-						session.created = opts["created"] as? Int ?? 0
-						session.updated = opts["updated"] as? Int ?? 0
-						session.idle = opts["idle"] as? Int ?? 0
-						session.ipaddress = opts["ipaddress"] as? String ?? ""
-						session.useragent = opts["useragent"] as? String ?? ""
-						session.data = opts
-					} catch {
-						print("Unexpected json response \(error)")
-						return
-					}
+				} catch {
+					p.fail(error)
 				}
-			} catch {
-				print(error)
 			}
 		}
-
-/*
-		client.get(key: key) {
-		response in
-		defer {
-		RedisClient.releaseClient(client)
-		expectation.fulfill()
+		do {
+			let session = try p.wait(seconds: 5.0)
+			return session!
+		} catch {
+			return PerfectSession()
 		}
-		guard case .bulkString = response else {
-		XCTAssert(false, "Unexpected response \(response)")
-		return
-		}
-		let s = response.toString()
-		XCTAssert(s == value, "Unexpected response \(response)")
-		}
-
-*/
-
-//		let server = connect()
-//		let result = server.exec(statement: "SELECT token,userid,created, updated, idle, data, ipaddress, useragent FROM \(PostgresSessionConnector.table) WHERE token = $1", params: [token])
-//
-//		let num = result.numTuples()
-//		for x in 0..<num {
-//			session.token = result.getFieldString(tupleIndex: x, fieldIndex: 0) ?? ""
-//			session.userid = result.getFieldString(tupleIndex: x, fieldIndex: 1) ?? ""
-//			session.created = result.getFieldInt(tupleIndex: x, fieldIndex: 2) ?? 0
-//			session.updated = result.getFieldInt(tupleIndex: x, fieldIndex: 3) ?? 0
-//			session.idle = result.getFieldInt(tupleIndex: x, fieldIndex: 4) ?? 0
-//			if let str = result.getFieldString(tupleIndex: x, fieldIndex: 5) {
-//				session.fromjson(str)
-//			}
-//			session.ipaddress = result.getFieldString(tupleIndex: x, fieldIndex: 6) ?? ""
-//			session.useragent = result.getFieldString(tupleIndex: x, fieldIndex: 7) ?? ""
-//		}
-//		result.clear()
-//
-//		server.close()
-		session._state = "resume"
-		return session
 	}
 
 
