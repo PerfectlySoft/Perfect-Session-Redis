@@ -6,7 +6,7 @@
 //
 //
 
-import TurnstileCrypto
+//import TurnstileCrypto
 import PerfectRedis
 import PerfectSession
 import PerfectHTTP
@@ -51,9 +51,10 @@ public struct RedisSessions {
 	}
 
 	public func start(_ request: HTTPRequest) -> PerfectSession {
-		let rand = URandom()
+//		let rand = URandom()
 		var session = PerfectSession()
-		session.token = rand.secureToken
+//		session.token = rand.secureToken
+		session.token = UUID().uuidString
 		session.data["userid"]		= session.userid
 		session.data["created"]		= session.created
 		session.data["updated"]		= session.updated
