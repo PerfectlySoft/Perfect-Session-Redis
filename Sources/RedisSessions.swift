@@ -37,7 +37,7 @@ public struct RedisSessions {
 			c in
 			do {
 				let client = try c()
-				client.set(key: s.token, value: .string(s.tojson())) {
+				client.set(key: s.token, value: .string(s.tojson()), expires: Double(SessionConfig.idle)) {
 					response in
 					defer {
 						RedisClient.releaseClient(client)
@@ -70,7 +70,7 @@ public struct RedisSessions {
 				c in
 				do {
 					let client = try c()
-					client.set(key: session.token, value: .string(encoded)) {
+					client.set(key: session.token, value: .string(encoded), expires: Double(SessionConfig.idle)) {
 						response in
 						defer {
 							RedisClient.releaseClient(client)
