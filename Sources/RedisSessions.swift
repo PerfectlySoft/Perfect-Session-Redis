@@ -33,11 +33,11 @@ public struct RedisSessions {
 	public func save(session: PerfectSession) {
 		var s = session
 		s.updated = Int(Date().timeIntervalSince1970)
-		var encoded = try session.data.jsonEncodedString()
-		encoded = encoded.replacingOccurrences(of: "\"", with: "\\\"")
 		RedisClient.getClient(withIdentifier: RedisSessionConnector.connect()) {
 			c in
-			do {
+			do {	
+				var encoded = try session.data.jsonEncodedString()
+				encoded = encoded.replacingOccurrences(of: "\"", with: "\\\"")
 				let client = try c()
 				client.set(key: s.token, value: .string(encoded), expires: Double(SessionConfig.idle)) {
 					response in
