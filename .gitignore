@@ -2,3 +2,6 @@
 /.build
 /Packages
 /*.xcodeproj
+.build_lin
+Package.resolved
+PADockerfile_build
