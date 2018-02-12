@@ -9,6 +9,7 @@
 import PerfectHTTP
 import PerfectSession
 import PerfectLogger
+import Foundation
 
 public struct SessionRedisDriver {
 	public var requestFilter: (HTTPRequestFilter, HTTPFilterPriority)
@@ -35,10 +36,10 @@ extension SessionRedisFilter: HTTPRequestFilter {
 			if let token = request.getCookie(name: SessionConfig.name) {
 				// From Cookie
 				session = driver.resume(token: token)
-			} else if let bearer = request.header(.authorization), !bearer.isEmpty {
+			} else if var bearer = request.header(.authorization), !bearer.isEmpty, bearer.hasPrefix("Bearer ") {
 				// From Bearer Token
-				let b = bearer.chompLeft("Bearer ")
-				session = driver.resume(token: b)
+				bearer.removeFirst("Bearer ".count)
+				session = driver.resume(token: bearer)
 
 			} else if let s = request.param(name: "session"), !s.isEmpty {
 				// From Session Link
