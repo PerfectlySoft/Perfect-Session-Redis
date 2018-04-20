@@ -26,13 +26,18 @@ public struct RedisSessionConnector {
 	}
 }
 
+extension PerfectSession {
+	mutating func redisTouch() {
+		touch()
+		data["updated"] = updated
+	}
+}
+
 
 public struct RedisSessions {
-
-
 	public func save(session: PerfectSession) {
 		var s = session
-		s.updated = Int(Date().timeIntervalSince1970)
+		s.redisTouch()
 		let encoded = s.tojson().replacingOccurrences(of: "\"", with: "\\\"")
 		RedisClient.getClient(withIdentifier: RedisSessionConnector.connect()) {
 			c in
@@ -48,7 +53,6 @@ public struct RedisSessions {
 				print(error)
 			}
 		}
-
 	}
 
 	public func start(_ request: HTTPRequest) -> PerfectSession {
@@ -63,31 +67,6 @@ public struct RedisSessions {
 		session.data["ipaddress"]	= request.remoteAddress.host
 		session.data["useragent"]	= request.header(.userAgent) ?? "unknown"
 		session.setCSRF()
-
-		do {
-			var encoded = try session.data.jsonEncodedString()
-			encoded = encoded.replacingOccurrences(of: "\"", with: "\\\"")
-			RedisClient.getClient(withIdentifier: RedisSessionConnector.connect()) {
-				c in
-				do {
-					let client = try c()
-					client.set(key: session.token, value: .string(encoded), expires: Double(SessionConfig.idle)) {
-						response in
-						defer {
-							RedisClient.releaseClient(client)
-						}
-						guard response.isSimpleOK else {
-							print("Unexpected response \(response)")
-							return
-						}
-					}
-				} catch {
-					print(error)
-				}
-			}
-		} catch {
-			print(error)
-		}
 		return session
 	}
 
@@ -168,7 +147,7 @@ public struct RedisSessions {
 							session._state = "resume"
 							p.set(session)
 						} catch {
-							print("Unexpected json response \(error)")
+							print("Unexpected json response \(error) \(data)")
 							p.fail(error)
 						}
 					}
@@ -178,8 +157,10 @@ public struct RedisSessions {
 			}
 		}
 		do {
-			let session = try p.wait(seconds: 5.0)
-			return session!
+			guard let session = try p.wait(seconds: 5.0) else {
+				return PerfectSession()
+			}
+			return session
 		} catch {
 			return PerfectSession()
 		}
