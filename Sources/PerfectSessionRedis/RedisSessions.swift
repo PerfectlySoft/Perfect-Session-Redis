@@ -45,9 +45,7 @@ public struct RedisSessions {
 				let client = try c()
 				client.set(key: s.token, value: .string(encoded), expires: Double(SessionConfig.idle)) {
 					response in
-					defer {
-						RedisClient.releaseClient(client)
-					}
+					RedisClient.releaseClient(client)
 				}
 			} catch {
 				print(error)
@@ -79,9 +77,7 @@ public struct RedisSessions {
 					let client = try c()
 					client.delete(keys: t) {
 						response in
-						defer {
-							RedisClient.releaseClient(client)
-						}
+						RedisClient.releaseClient(client)
 					}
 				} catch {
 					print(error)
@@ -128,7 +124,7 @@ public struct RedisSessions {
 							return
 						}
 
-						guard let data = response.toString(), !data.isEmpty else {
+						guard let data = response.string, !data.isEmpty else {
 							print("NO DATA")
 							p.set(session)
 							return
